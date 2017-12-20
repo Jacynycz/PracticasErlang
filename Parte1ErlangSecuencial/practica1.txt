@@ -1,0 +1,113 @@
+Viktor Jacynycz García
+
+-----------
+Ejercicio 1: Al ejecutar el código salta una excepción de "** exception error: bad argument"
+ya que en la última instrucción F=hd(E), E es un entero, no una lista (condición necesaria para llamar a hd()).
+El argumento de la función hd(X) tiene que ser una lista no vacía para que pueda devolver el primer elemento.
+
+-----------
+Ejercicio 2:
+
+> f(),{ok,X} = io:read(primer_valor_),{ok,Y} = io:read(segundo_valor_),X+Y.
+
+-Primero olvida las variables
+-Luego pide un valor para X seguido de punto
+-Luego pide un valor para Y seguido de punto
+-Devuelve la suma
+
+-----------
+Ejercicio 3:
+
+> f(), S="dabalearrozalazorraelabad", S == lists:reverse(S).
+
+Simplemente comprobamos que la lista de caracteres
+S es igual a ella misma invertida.
+
+Se puede pedir también un string al usuario con:
+
+> f(),{ok,S} = io:read(escribe_string_), S == lists:reverse(S).
+
+
+-----------
+Ejercicio 4:
+
+> f(), Rev = fun(X) -> X == lists:reverse(X) end.
+
+Igual que el ejercicio 3 pero asociando una función.
+
+
+-----------
+Ejercicio 5:
+
+> f(), Area = fun({cuadrado,_,X}) -> X*X end.
+
+La función Area(X) espera que X sea una tupla de cuadrado con su lado
+y devuleve el área de este.
+Por ejemplo "Area({cuadrado,{0,0},10})." devuelve el valor 100.
+
+
+-----------
+Ejercicio 6:
+Dada una lista como:
+
+> L=[{circulo,{0,0},23},{rectangulo,{1,1},13,4},{cuadrado,{1,1},10}].
+
+Tenemos una lista de tuplas de figuras geométricas.
+
+Para calcular el área del primer cuadrado podemos expresarlo así:
+
+> f(X),{value,{cuadrado,_,X}}=lists:keysearch(cuadrado,1,L),X*X.
+
+Además si ampliamos la lista L de la siguiente manera
+comprobamos que el valor que devuelve es el del
+primer cuadrado
+
+> f(X),{value,{cuadrado,_,X}}=lists:keysearch(cuadrado,1,L++[{cuadrado,{1,1}12}]),X*X.
+
+-----------
+Ejercicio 7:
+
+> f(),Escuadrado = fun({rectangulo,Y,X,X}) -> {cuadrado,Y,X} end.
+
+La siguiente función evalua si el argumento de entrada
+es un rectángulo con los dos lados iguales y si lo son
+devuelve un cuadrado, si no da error de matching.
+
+> Escuadrado({rectangulo,{0,0},1,1}).
+{cuadrado,{0,0},1}
+
+> Escuadrado({rectangulo,{0,0},1,2}).
+** exception error: no function clause matching
+                    erl_eval:'-inside-an-interpreted-fun-'({rectangulo,
+                                                            {0,0},
+                                                            1,2})
+
+-----------
+Ejercicio 8:
+
+f(),S1 = {circulo,{1,1},1}, S2 = {rectangulo,{0,2},2,3},{circulo,{CC1,CC2},Rc} = S1, {rectangulo,{CR1,CR2},LR1,LR2} = S2, (CC1+Rc =< CR1+LR1) and (CC1-Rc >= CR1) and (CC2+Rc =< CR2) and (CC2-Rc >= CR2-LR2).
+
+
+-----------
+Ejercicio 9:
+
+> f(),Cuadrado = fun(C) -> element(1,C) == square end.
+
+Comprueba que el primer elemento de la tupla es
+el atomo 'square'
+
+-----------
+Ejercicio 10:
+
+Utilizando funciones de los otros apartados podemos
+usar la siguiente expresion
+
+> f(),Cuadrado = fun(C) -> element(1,C) == square end, Area = fun({square,_,X}) -> X*X end, Cs = fun(L) -> lists:map(Area,lists:filter(Cuadrado,L)) end.
+
+y al evaluar obtenemos:
+
+> Cs([{square,{4,5},5},{rectangle,{0,0},8,8},{square,{1,2},8}]).
+[25,64]
+
+> Cs([{square,{4,5},15},{rectangle,{0,0},8,8},{square,{1,2},83}]).
+[225,6889]
