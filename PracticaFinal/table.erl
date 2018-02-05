@@ -1,7 +1,7 @@
 -module(table).
 
 -export([init/1, terminate/2, handle_call/3, handle_cast/2,
-         handle_info/2, code_change/3,start/0,stop/0,insert/1,ask/1]).
+         handle_info/2, code_change/3,start/0,stop/0,insert/3,ask/1,ask/2]).
 
 -behaviour(gen_server).
 
@@ -13,10 +13,33 @@ init(_)->Tableref=ets:new(data,[set]),
 
 handle_call(stop_table, _From, State) ->io:format("Table server stopping...~n", []), 
                                         {stop, normal, ok, State};
-handle_call({insert,A}, _From, State) -> ets:insert(State,A),
-                                         {reply,A,State };
-handle_call({ask,A}, _From, State) -> Response = ets:lookup(State,A),
-                                         {reply,Response,State };
+
+handle_call({insert,Id,Field,Value}, _From, State) ->
+    case  ets:lookup(State,Id) of
+        []  -> Newreference = ets:new(id,[set]),
+               ets:insert(Newreference,{Field,Value}),
+               ets:insert(State,{Id,Newreference});
+        [{Id, Reference}|_] -> ets:insert(Reference,{Field,Value})
+    end,
+                                                %ets:insert(State,A),
+    {reply,{Id,Field,Value},State};
+
+handle_call({ask,Id}, _From, State) ->
+    case  ets:lookup(State,Id) of
+        []  -> Response = "";
+        [{Id, Reference}|_]  ->  ets:lookup(State,Id),
+                                 Response = ets:match_object(Reference, {'$0', '$1'})
+    end,
+    {reply,Response,State };
+
+handle_call({ask,Id,Field}, _From, State) ->
+    case  ets:lookup(State,Id) of
+        []  -> Response = "";
+        [{Id, Reference}|_]  ->  ets:lookup(State,Id),
+                                 Response = ets:match_object(Reference, {Field, '$1'})
+    end,
+    {reply,Response,State };
+
 handle_call(Request, _From, State) -> io:format("Unexpected request: ~w~n", [Request]),
                                       {noreply, State}.
 handle_cast(Request, State) -> io:format("Unexpected request: ~w~n", [Request])
@@ -35,7 +58,32 @@ start() ->
 
 stop() -> gen_server:call(?SERVERNAME, stop_table).
 
-insert(Query) -> gen_server:call(?SERVERNAME,{insert,Query}).
+insert(Id,Field,Value) -> gen_server:call(?SERVERNAME,{insert,Id,Field,Value}).
 
-ask(Query) -> gen_server:call(?SERVERNAME,{ask,Query}).
+ask(Query, Field) -> Ask= gen_server:call(?SERVERNAME,{ask,Query,Field}),
+                      Info = daemon:peers_info(),
+                      Result = lists:filtermap(
+                                 fun ({Status,Server}) ->
+                                         case Status of 
+                                             1  -> {true, gen_server:call({?SERVERNAME,Server},{ask,Query,Field})}; 
+                                             0 -> false
+                                         end 
+                                 end, 
+                                 Info
+                                ), 
+                      Ask++lists:merge(Result).
+
+
+ask(Query) -> Ask= gen_server:call(?SERVERNAME,{ask,Query}),
+              Info = daemon:peers_info(),
+              Result = lists:filtermap(
+                         fun ({Status,Server}) ->
+                                 case Status of 
+                                     1  -> {true, gen_server:call({?SERVERNAME,Server},{ask,Query})}; 
+                                     0 -> false
+                                 end 
+                         end, 
+                         Info
+                        ), 
+              Ask++lists:merge(Result).
 

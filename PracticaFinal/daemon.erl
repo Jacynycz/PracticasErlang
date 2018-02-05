@@ -5,31 +5,30 @@
 
 -behaviour(gen_server).
 
--define(SERVERNAME, ?MODULE).
--define(LATENCY, 1500).
+-include("config.hrl").
 
 init(Host)->io:format("Starting daemon~n"),
-            {ok, Host , ?LATENCY}.
+            {ok, Host , ?NEIGHBOR_LATENCY}.
 
 handle_call(stop_daemon, _From, State) ->io:format("Daemon server stopping...~n", []), 
                                          {stop, normal, ok, State};
 
-handle_call(ddb_ping, _From, State) -> {reply,1,State,?LATENCY};
+handle_call(ddb_ping, _From, State) -> {reply,1,State,?NEIGHBOR_LATENCY};
 
 handle_call(peers_info, _From,State) -> Nodes = nodes(),
                                         Pings =  lists:map(
                                                    fun(X)  -> safecall({daemon,X},ddb_ping) end,
                                                    Nodes),
-                                        {reply,lists:zip(Pings,Nodes),State,?LATENCY}; 
+                                        {reply,lists:zip(Pings,Nodes),State,?NEIGHBOR_LATENCY}; 
 
 handle_call(Request, _From, State) -> io:format("Unexpected request: ~w~n", [Request]),
-                                      {noreply, State,?LATENCY}.
+                                      {noreply, State,?NEIGHBOR_LATENCY}.
 
 handle_cast(Request, State) -> io:format("Unexpected request: ~w~n", [Request])
-                                   ,{noreply, State,?LATENCY}.
+                                   ,{noreply, State,?NEIGHBOR_LATENCY}.
 
 handle_info(_Message, State) -> check_peers(State),
-                                {noreply, State,?LATENCY}.
+                                {noreply, State,?NEIGHBOR_LATENCY}.
 
 terminate(Reason, _State) -> io:format("Daemon server finished.~n"),
                              io:format("Reason: ~w~n", [Reason]).

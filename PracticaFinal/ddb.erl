@@ -1,5 +1,5 @@
 -module(ddb).
--export([start/0,stop/0,peers_info/0,add/1,ask/1]).
+-export([start/0,stop/0,peers_info/0,add/3,ask/1,ask/2]).
 
 start()  -> io:format("Starting distributed database...~n"),
             io:format("Loading main module...~n"),
@@ -11,7 +11,7 @@ start()  -> io:format("Starting distributed database...~n"),
 
 try_to_load(Module)  -> io:format("Loading module ~w...~n",[Module]),
                         case code:ensure_loaded(Module) of
-                            {error,_} -> compile:file(Module);
+                            {error,_} -> io:format("*** Error loading module [~w]~n*** Use the comp module to compile all the modules~n",[Module]),throw(module_not_compiled);
                             _ -> ok
                         end.
 
@@ -20,8 +20,6 @@ connect() -> daemon:start(),
 
 stop()  -> daemon:stop(),
            table:stop().
-
-                                                %ask(Query)  -> lists:map(fun(X)  -> safecall({table,X},{info,Query}) end,nodes()). 
 
 peers_info() -> Info = daemon:peers_info(),
                 io:format("-----------------~n"),
@@ -39,16 +37,6 @@ peers_info() -> Info = daemon:peers_info(),
                 io:format("-----------------~n").
 
 
-add(Tuple)  -> table:insert(Tuple).
-ask(Id)  -> Ask = table:ask(Id),
-            Info = daemon:peers_info(),
-            Result = lists:filtermap(
-              fun ({Status,Server}) ->
-                      case Status of 
-                          1  -> {true, gen_server:call({table,Server},{ask,Id})}; 
-                          0 -> false
-                      end 
-              end, 
-              Info
-             ), 
-            Ask++lists:merge(Result).
+add(Id,Field,Value)  -> table:insert(Id,Field,Value).
+ask(Id)  -> table:ask(Id).
+ask(Id, Field)  -> table:ask(Id, Field).
