@@ -60,30 +60,32 @@ stop() -> gen_server:call(?SERVERNAME, stop_table).
 
 insert(Id,Field,Value) -> gen_server:call(?SERVERNAME,{insert,Id,Field,Value}).
 
-ask(Query, Field) -> Ask= gen_server:call(?SERVERNAME,{ask,Query,Field}),
-                      Info = daemon:peers_info(),
-                      Result = lists:filtermap(
-                                 fun ({Status,Server}) ->
-                                         case Status of 
-                                             1  -> {true, gen_server:call({?SERVERNAME,Server},{ask,Query,Field})}; 
-                                             0 -> false
-                                         end 
-                                 end, 
-                                 Info
-                                ), 
-                      Ask++lists:merge(Result).
+ask(Query, Field) -> 
+    Ask= gen_server:call(?SERVERNAME,{ask,Query,Field}),
+    Info = daemon:peers_info(),
+    Result = lists:filtermap(
+               fun ({Status,Server}) ->
+                       case Status of 
+                           1  -> {true, gen_server:call({?SERVERNAME,Server},{ask,Query,Field})}; 
+                           0 -> false
+                       end 
+               end, 
+               Info
+              ), 
+    Ask++lists:merge(Result).
 
 
-ask(Query) -> Ask= gen_server:call(?SERVERNAME,{ask,Query}),
-              Info = daemon:peers_info(),
-              Result = lists:filtermap(
-                         fun ({Status,Server}) ->
-                                 case Status of 
-                                     1  -> {true, gen_server:call({?SERVERNAME,Server},{ask,Query})}; 
-                                     0 -> false
-                                 end 
-                         end, 
-                         Info
-                        ), 
-              Ask++lists:merge(Result).
+ask(Query) -> 
+    Ask= gen_server:call(?SERVERNAME,{ask,Query}),
+    Info = daemon:peers_info(),
+    Result = lists:filtermap(
+               fun ({Status,Server}) ->
+                       case Status of 
+                           1  -> {true, gen_server:call({?SERVERNAME,Server},{ask,Query})}; 
+                           0 -> false
+                       end 
+               end, 
+               Info
+              ), 
+    Ask++lists:merge(Result).
 
