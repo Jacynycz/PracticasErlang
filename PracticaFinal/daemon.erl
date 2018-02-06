@@ -1,7 +1,7 @@
 -module(daemon).
 
 -export([init/1, terminate/2, handle_call/3, handle_cast/2,
-         handle_info/2, code_change/3,start/0,start/1,stop/0,peers_info/0]).
+         handle_info/2, code_change/3,start/0,start/1,stop/0,peers_info/0,connect/1]).
 
 -behaviour(gen_server).
 
@@ -59,7 +59,7 @@ check_peers(Host)  ->  {ok, Names} = net_adm:names(),
 actualiza_peers(Newpeers,Peers,Host) ->
     case element(2,Peers)+1  >  element(2,Newpeers) of
         true -> io:format("Desconectados Peers~n");
-        false  -> io:format("Detectados nuevos peers, conectando...~n"),
+        false  -> %io:format("Detectados nuevos peers, conectando...~n"),
                   List_of_new_peers = sets:to_list(sets:subtract(Newpeers,Peers)),
                   lists:foreach(fun(X) -> connect_peer(X,Host) end, List_of_new_peers )
     end.
@@ -75,3 +75,10 @@ safecall(Call,Query) ->
     try gen_server:call(Call,Query)
     catch _:_  -> 0
     end.
+
+
+connect(Ip)  -> 
+    case net_adm:ping(Ip) of
+        pong -> connected;
+        pang -> error
+    end. 
