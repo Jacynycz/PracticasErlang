@@ -13,7 +13,10 @@
          add_single_field/3,
          overwrite_single_field/3,
          add_multi_field/3,
-         ask/1,ask/2,
+         ask/1,
+         ask/2,
+         ask_node/2,
+         ask_network/2,
          add_contact/1]).
 
 -behaviour(gen_server).
@@ -162,7 +165,15 @@ stop() ->
     call(stop_table).
 
 exists_contact(Id)  -> 
-    call({exists_contact,Id}).
+    case call({exists_contact,Id}) of
+        true  -> true;
+        false  -> 
+            %Other_nodes = 
+                lists:filter(
+                  fun({_, Bool}) -> Bool end,
+                  distributed_call({exists_contact,Id})                
+                  )
+    end.
 
 add_contact(Id)  -> 
     call({add_contact,Id}).
@@ -181,6 +192,11 @@ ask(Query, Field) ->
     Result =  distributed_call({ask,Query,Field}),
     [Ask|Result].
 
+ask_node(Query, Field) -> 
+    call({ask,Query,Field}).
+
+ask_network(Query,Field) -> 
+    distributed_call({ask,Query,Field}).
 
 ask(Id) -> 
     Ask= {node(),call({ask,Id})},

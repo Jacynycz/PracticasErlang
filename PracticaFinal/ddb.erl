@@ -10,6 +10,7 @@ connect(Ip)  ->
     end.
 
 start(Opts)  ->
+    check_node(),
     case Opts of
         light  ->
             io:format("Starting light client...~n"), 
@@ -46,5 +47,10 @@ stop()  ->
     daemon:stop(),
     table:stop().
 
-
+check_node()  -> 
+    case node() of
+        nonode@nohost  -> 
+            error("No node connected, start erland with '-name' or '-sname'");
+        _ -> ok
+    end.
 

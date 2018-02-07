@@ -12,20 +12,20 @@ stop() ->
 
 main() -> 
     welcome_msg(),
-    {ok, [X]} = io:fread("Elección : ", "~d"),
+    {ok, [X]} = io:fread("Elección : ", "~a"),
     case X of
-        1 ->
+        '1' ->
             add_contact_prompt(),
             continue_msg();
-        2 ->
+        '2' ->
             add_info_prompt(),
             continue_msg();
-        3 ->
+        '3' ->
             check_contact_prompt(),
             continue_msg();
-        0 ->
+        '0' ->
             ok;
-        9 ->
+        '9' ->
             peers_info(),
             continue_msg();
         _ -> main()
@@ -35,7 +35,8 @@ clearscr()->
     io:format("\033[2J").
 
 separator_msg() ->
-    io:format("-----------------~n").
+    
+io:format("-----------------~n").
 
 welcome_msg() ->
     clearscr(),
@@ -64,7 +65,7 @@ title_msg(Title) ->
 
 header_msg(Title) ->
     %separator_msg(),
-    io:format("--- ~s ---~n",[Title]).
+    io:format("-- ~s --~n",[Title]).
 
 format(Text) ->
     format_nodes_info(Text).
@@ -84,18 +85,18 @@ format_nodes_info([{Addr,Head}|Tail]) ->
         _  -> 
             ok
     end,
-    format_info(Head),
+    format_info(Head,""),
     format_nodes_info(Tail).
 
-format_info([]) ->
+format_info([],_) ->
     ok;
 
-format_info([Head|Tail])  -> 
+format_info([Head|Tail],Leadingchars)  -> 
     case Head of 
         {Field,[{Subfield,Subvalue}|Subtail]}->
-            header_msg(Field),format_info([{Subfield,Subvalue}|Subtail]);
+            header_msg(Field),format_info([{Subfield,Subvalue}|Subtail],"----");
         {Field, Value} ->
-            io:fwrite("~s - ",[Field]),
+            io:fwrite("~s ~s - ",[Leadingchars,Field]),
             case is_integer(Value) of
                 true ->
                     io:format("~w~n",[Value]);
@@ -103,7 +104,7 @@ format_info([Head|Tail])  ->
                     io:format("~s~n",[Value])
             end
     end,
-format_info(Tail).
+format_info(Tail,Leadingchars).
 
 peers_info() ->
     Info = daemon:peers_info(),
@@ -123,7 +124,7 @@ add_contact_prompt() ->
     title_msg("AÑADIR CONTACTO"),
     io:format("Introduzca los datos del contacto~n"),
     {ok, [Id]} = io:fread("Identificador de contacto: ", "~a"),
-    add_contact(Id).
+    table:add_contact(Id).
 
 add_info_prompt()  -> 
     title_msg("AÑADIR INFORMACIÓN DE CONTACTO"),
@@ -131,31 +132,87 @@ add_info_prompt()  ->
     {ok, [Id]} = io:fread("Identificador de contacto: ", "~a"),
     case table:exists_contact(Id) of
         true  -> 
-            header_msg("Añadir un dato individual o múltiple"),
-            io:format("1. Individual (Ej. Nombre, Apellidos, DNI)~n"),
-            io:format("2. Múltiple (Ej. Teléfonos, Correos, Direcciones)~n"),
-            {ok,[Choice]} =  io:fread("Identificador de contacto: ", "~a"),
-            {Id,Choice};
-        false  -> 
-            io:format("No existe el contacto~n")
+            add_info_field(Id);
+        [{Node,true}|_] -> 
+            io:format("El contacto ya extiste en el nodo ~w, creando contacto~n",[Node]),
+            table:add_contact(Id),
+            add_info_field(Id);
+        []  -> 
+            io:format("No existe el contacto~n¿Crear contacto ~w?(s/n)~n",[Id]),
+            {ok,[Choice]} =  io:fread("Elección: ", "~a"),
+            case Choice of
+                s  -> 
+                    table:add_contact(Id),
+                    add_info_field(Id);
+                _ -> ok
+            end
+    end.
+
+add_info_field(Id) -> 
+    header_msg("Añadir un campo individual o múltiple"),
+    io:format("1. Individual (Ej. Nombre, Apellidos, DNI)~n"),
+    io:format("2. Múltiple (Ej. Teléfonos, Correos, Direcciones)~n"),
+    {ok,[Choice]} =  io:fread("Elección: ", "~a"),
+    case Choice of 
+        '1'  -> 
+            add_single_field(Id);
+       '2' ->
+            add_multi_field(Id);
+        _ -> 
+            ok
+    end.
+
+add_single_field(Id)  -> 
+    header_msg("Añadir un campo individual al contacto "++atom_to_list(Id)),
+    {ok,[Fieldname]} =  io:fread("Nombre del campo: ", "~a"),
+    check_field(Id,Fieldname),
+    Value =  getline("Valor del campo: "),
+    table:add_single_field(Id,Fieldname,Value).
+
+add_multi_field(Id)  -> 
+    header_msg("Añadir un campo múltiple al contacto "++atom_to_list(Id)),
+    {ok,[Fieldname]} =  io:fread("Nombre del campo: ", "~a"),
+    check_field(Id,Fieldname),
+    Values = ask_for_values(Id,Fieldname),
+    table:add_single_field(Id,Fieldname,Values).
+
+check_field(Id,Field)  -> 
+    case table:ask_node(Id,Field) of
+         [{Field, Value}] -> 
+            io:format("El campo '~w' tiene el valor '~s' en el nodo actual~n",[Field,Value]),
+            ok
+   end.
+
+check_subfield(_,_,_) ->
+    ok.
+
+getline(Text)  -> 
+    Line = io:get_line(Text),
+    string:trim(Line,trailing,"\n").
+
+ask_for_values(Id,Fieldname) ->
+    {ok,[Subfieldname]} =  io:fread("Nombre del subcampo: ", "~a"),
+    check_subfield(Id,Fieldname, Subfieldname),
+    Subfieldvalue = getline("Valor del subcampo"),
+    {ok,[Choice]} =  io:fread("¿Añadir otro valor más? (s/n): ", "~a"),
+    case Choice of 
+        's'  -> [{Subfieldname,Subfieldvalue}|ask_for_values(Id,Fieldname)];
+        _ ->  [{Subfieldname,Subfieldvalue}]
     end.
 
 check_contact_prompt() ->
     title_msg("VER INFORMACIÓN DE CONTACTO"),
     io:format("1. Ver toda la información del contacto~n"),
     io:format("2. Ver un valor concreto del contacto~n"),
-    {ok, [X]} = io:fread("Elección: ", "~d"),
+    {ok, [X]} = io:fread("Elección: ", "~a"),
     case X of
-        1 ->
-
+        '1' ->
             {ok, [Id]} = io:fread("Identificador de contacto: ", "~a"),
-            format(ask(Id));
-        2  -> 
+            format(table:ask(Id));
+        '2'  -> 
             {ok, [Id]} = io:fread("Identificador de contacto: ", "~a"),
             {ok, [Field]} = io:fread("Valor buscado: ", "~a"),
-            format(ask(Id,Field))
+            format(table:ask(Id,Field));
+        _ -> ok
         end.
 
-add_contact(Id)  -> table:add_contact(Id).
-ask(Id)  -> table:ask(Id).
-ask(Id, Field)  -> table:ask(Id, Field).
