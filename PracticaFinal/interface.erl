@@ -165,26 +165,107 @@ add_info_field(Id) ->
 add_single_field(Id)  -> 
     header_msg("Añadir un campo individual al contacto "++atom_to_list(Id)),
     {ok,[Fieldname]} =  io:fread("Nombre del campo: ", "~a"),
-    check_field(Id,Fieldname),
-    Value =  getline("Valor del campo: "),
-    table:add_single_field(Id,Fieldname,Value).
+    case(check_field(Id,Fieldname)) of
+        true  -> 
+            Value =  getline("Valor del campo: "),
+            table:overwrite_single_field(Id,Fieldname,Value);
+        _   -> ok
+    end.
 
 add_multi_field(Id)  -> 
     header_msg("Añadir un campo múltiple al contacto "++atom_to_list(Id)),
     {ok,[Fieldname]} =  io:fread("Nombre del campo: ", "~a"),
-    check_field(Id,Fieldname),
     Values = ask_for_values(Id,Fieldname),
-    table:add_single_field(Id,Fieldname,Values).
+    case Values of
+        []  -> ok;
+        L ->
+            table:add_multi_field(Id,Fieldname,Values)
+    end.
 
 check_field(Id,Field)  -> 
     case table:ask_node(Id,Field) of
          [{Field, Value}] -> 
             io:format("El campo '~w' tiene el valor '~s' en el nodo actual~n",[Field,Value]),
-            ok
+            {ok,[Choice]} =  io:fread("¿Desea sobreescribirlo?(s/n): ", "~a"),
+            case Choice of 
+                s  -> 
+                    true;
+                _ ->
+                    false
+            end;
+        [] -> 
+            Peers_info = table:ask_network(Id, Field),
+            case lists:filter(
+                   fun({_, Responses}) ->
+                           case Responses of 
+                               []  -> false;
+                               _  -> true
+                           end
+                   end,
+                   Peers_info) 
+            of
+                []  -> true;
+                L  ->
+                    io:format("Se han encotrado valores prara el campo '~w' en otros nodos:~n",[Field]),
+                    lists:foreach(
+                     fun ({Node, [{_F,Nodevalue}]})  -> 
+                             io:format("-- '~s' en el nodo ~w~n",[Nodevalue,Node])
+                     end,
+                      L),
+                    separator_msg(),
+                    io:format("Añadir este campo puede provocar inconsistencia de datos entre los nodos~n"),
+                    {ok,[Choice]} =  io:fread("¿Desea continuar?(s/n): ", "~a"),
+                    case Choice of 
+                        s  -> 
+                            true;
+                        _ ->
+                            false
+                    end
+            end
    end.
 
-check_subfield(_,_,_) ->
-    ok.
+check_subfield(Id, Field, Subfield) ->
+        case table:ask_node(Id,Field,Subfield) of
+         [{Subfield, Value}] -> 
+            io:format("El campo '~w' tiene el valor '~s' en el nodo actual~n",[Subfield,Value]),
+            io:format("El sistema no permite subcampos con la misma clave y valor~n"),
+            {ok,[Choice]} =  io:fread("¿Desea continuar?(s/n): ", "~a"),
+            case Choice of 
+                s  -> 
+                    true;
+                _ ->
+                    false
+            end;
+        [] -> 
+            Peers_info = table:ask_network(Id, Field, Subfield),
+            case lists:filter(
+                   fun({_, Responses}) ->
+                           case Responses of 
+                               []  -> false;
+                               _  -> true
+                           end
+                   end,
+                   Peers_info) 
+            of
+                []  -> true;
+                L  ->
+                    io:format("Se han encotrado valores prara el subcampo '~w' en otros nodos:~n",[Subfield]),
+                    lists:foreach(
+                     fun ({Node, [{_F,Nodevalue}]})  -> 
+                             io:format("-- '~s' en el nodo ~w~n",[Nodevalue,Node])
+                     end,
+                      L),
+                    separator_msg(),
+                    io:format("Añadir este campo puede provocar inconsistencia de datos entre los nodos~n"),
+                    {ok,[Choice]} =  io:fread("¿Desea continuar?(s/n): ", "~a"),
+                    case Choice of 
+                        s  -> 
+                            true;
+                        _ ->
+                            false
+                    end
+            end
+   end.
 
 getline(Text)  -> 
     Line = io:get_line(Text),

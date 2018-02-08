@@ -1,5 +1,5 @@
 -module(ddb).
--export([start/1,stop/0,connect/1]).
+-export([init/0,start/1,stop/0,connect/1]).
 
 
 connect(Ip)  ->
@@ -8,6 +8,8 @@ connect(Ip)  ->
         true  -> daemon:connect(Ip);
         false -> daemon:connect(list_to_atom(Ip))
     end.
+
+init() -> start(light).
 
 start(Opts)  ->
     check_node(),
