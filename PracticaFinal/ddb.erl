@@ -37,11 +37,6 @@ interface() ->
 
 core() -> 
     io:format("Starting distributed database...~n"),
-    io:format("Loading main module...~n"),
-    code:ensure_loaded(ddb),
-    Modules_list=[daemon,table,interface],
-    lists:foreach(fun(X) -> try_to_load(X) end,Modules_list),
-    io:format("Connecting to the peer to peer network...~n"),
     daemon:start(),
     table:start().
 

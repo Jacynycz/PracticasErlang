@@ -28,55 +28,55 @@
 
 init(_)->Tableref=ets:new(data,[set]),
          io:format("Starting table server~n"),
-         {ok, Tableref}.
+         {ok, {Tableref,""}}.
 
 handle_call(stop_table, _From, State) ->
     io:format("Table server stopping...~n", []), 
     {stop, normal, ok, State};
 
-handle_call({exists_contact,Id}, _From, State) ->
-    case  ets:lookup(State,Id) of
+handle_call({exists_contact,Id}, _From, {Table,Lastreq}) ->
+    case  ets:lookup(Table,Id) of
         []  ->
-            {reply,false,State};
+            {reply,false,{Table,Lastreq}};
         [{Id,_Reference}|_] -> 
-            {reply,true,State}
+            {reply,true,{Table,Lastreq}}
     end;
 
-handle_call({add_contact,Id}, _From, State) ->
-    case  ets:lookup(State,Id) of
+handle_call({add_contact,Id}, _From, {Table,Lastreq}) ->
+    case  ets:lookup(Table,Id) of
         []  -> ContactEts = ets:new(id,[set]),
-               ets:insert(State,{Id,ContactEts}),
-               {reply,{ok,Id},State};
-        [{Id, Reference}|_] ->  {reply,{existing,Reference},State}
+               ets:insert(Table,{Id,ContactEts}),
+               {reply,{ok,Id},{Table,Lastreq}};
+        [{Id, Reference}|_] ->  {reply,{existing,Reference},{Table,Lastreq}}
     end;
 
-handle_call({add_single_field,Id,Field,Value}, _From, State) ->
-    case  ets:lookup(State,Id) of
+handle_call({add_single_field,Id,Field,Value}, _From, {Table,Lastreq}) ->
+    case  ets:lookup(Table,Id) of
         []  -> 
-            {reply,{error,"User does not exist"},State};
+            {reply,{error,"User does not exist"},{Table,Lastreq}};
         [{Id, Reference}|_] ->
             case ets:lookup(Reference,Field) of
                 []  ->
                     ets:insert(Reference,{Field,Value}),
-                    {reply,{ok ,{Id,Field,Value}},State};
+                    {reply,{ok ,{Id,Field,Value}},{Table,Lastreq}};
                 [{_,Existing_value}] ->
-                    {reply,{existing,{Existing_value}},State}
+                    {reply,{existing,{Existing_value}},{Table,Lastreq}}
             end
     end;
 
-handle_call({overwrite_single_field,Id,Field,Value}, _From, State) ->
-    case  ets:lookup(State,Id) of
+handle_call({overwrite_single_field,Id,Field,Value}, _From, {Table,Lastreq}) ->
+    case  ets:lookup(Table,Id) of
         []  -> 
-            {reply,{error,"User does not exist"},State};
+            {reply,{error,"User does not exist"},{Table,Lastreq}};
         [{Id, Reference}|_] ->
             ets:insert(Reference,{Field,Value}),
-            {reply,{ok ,{Id,Field,Value}},State}
+            {reply,{ok ,{Id,Field,Value}},{Table,Lastreq}}
     end;
 
-handle_call({add_multi_field,Id,Field,Values}, _From, State) ->
-    case  ets:lookup(State,Id) of
+handle_call({add_multi_field,Id,Field,Values}, _From, {Table,Lastreq}) ->
+    case  ets:lookup(Table,Id) of
         []  -> 
-            {reply,{error,"User does not exist"},State};
+            {reply,{error,"User does not exist"},{Table,Lastreq}};
         [{Id, Reference}|_] ->
             case ets:lookup(Reference,Field) of
                 []  ->
@@ -84,50 +84,82 @@ handle_call({add_multi_field,Id,Field,Values}, _From, State) ->
                     Field_reference = ets:new(Name,[bag]),
                     ets:insert(Reference,{Field,multi,Field_reference}),
                     ets:insert(Field_reference,Values),
-                    {reply,{ok ,{Id,Field,Values}},State};
+                    {reply,{ok ,{Id,Field,Values}},{Table,Lastreq}};
                 [{_,Existing_value}] ->
-                    {reply,{existing,{Existing_value}},State}
+                    {reply,{existing,{Existing_value}},{Table,Lastreq}}
             end
     end;
 
-handle_call({ask,Id}, _From, State) ->
-    Response = get_data(Id,State),
-    {reply,Response,State};
+handle_call({ask,Id,Field}, _From, {Table,Lastreq}) ->
+    Response = get_data(Id,Table,Field),
+    {reply,Response,{Table,Lastreq}};
 
-handle_call({ask,Id,Field}, _From, State) ->
-    Response = get_data(Id,State,Field),
-    {reply,Response,State};
+handle_call({dask,Nodes_visited,Id,Field,Callhash}, _From, {Table,Lastreq}) ->
+    %Response = get_data(Id,State,Field),
+    %{reply,Response,State};
+case Callhash == Lastreq of
+    true  -> {reply,[],{Table,Lastreq}};
+    false  -> 
+        Localdata = get_data(Id,Table,Field),
+                                                %io:format("Datos obtenidos~n"),
+        Neighbors = sets:from_list(daemon:peers_alive()),
+                                                %io:format("Obtenida lista de vecinos vivos ~w~n",[sets:to_list(Neighbors)]),
+        Visited = sets:from_list(Nodes_visited),
+                                                %io:format("Vecinos visitados ~w~n",[Nodes_visited]),
+        Target = sets:subtract(Neighbors,Visited),
+        Target_list = sets:to_list(Target),
+                                                %io:format("Vecinos a los que realizar petición: ~w~n",[Target_list]),
+        Response = distributed_call(
+                     {dask,
+                      Nodes_visited++Target_list,
+                      Id,Field,Callhash}, Target_list),
+        {reply,lists:flatten([{node(),Localdata}| Response]),{Table,Callhash}}
+end;
 
-handle_call({digraph,Nodes_visited}, _From, State) ->
-    Neighbors = sets:from_list(daemon:peers_alive()),
-    Visited = sets:from_list(Nodes_visited),
-    Target = sets:subtract(Neighbors,Visited),
-    Target_list = sets:to_list(Target),
-    Response = distributed_call(
-                 {digraph,
-                  Nodes_visited++Target_list
-                 }, 
-                 Target_list),
-    {reply,{node(), Response},State};
+handle_call({digraph,Nodes_visited,Callhash}, _From, {Table,Lastreq}) ->
+    case Callhash == Lastreq of
+        true  -> {reply,[],{Table,Lastreq}};
+        false  -> 
+            Neighbors = sets:from_list(daemon:peers_alive()),
+            Visited = sets:from_list(Nodes_visited),
+            Target = sets:subtract(Neighbors,Visited),
+            Target_list = sets:to_list(Target),
+            Node_rep = 
+                lists:map(
+                 fun(Nextnodes) -> 
+                         "\"" ++ atom_to_list(node()) ++ "\" -- \"" ++
+atom_to_list(Nextnodes) ++ "\"\n"
+end,Target_list),
+            Response = distributed_call(
+                         {digraph,
+                          Nodes_visited++Target_list,
+                         Callhash}, 
+                         Target_list),
+            {reply,[Node_rep | Response],{Table,Callhash}}
+    end;
 
-handle_call({dask,Nodes_visited,Id}, _From, State) ->
-    Localdata = get_data(Id,State),
-    io:format("Datos obtenidos~n"),
-    Neighbors = sets:from_list(daemon:peers_alive()),
-    io:format("Obtenida lista de vecinos vivos ~w~n",[sets:to_list(Neighbors)]),
-    Visited = sets:from_list(Nodes_visited),
-    io:format("Vecinos visitados ~w~n",[Nodes_visited]),
-    Target = sets:subtract(Neighbors,Visited),
-    Target_list = sets:to_list(Target),
-    io:format("Vecinos a los que realizar petición: ~w~n",[Target_list]),
-    Response = distributed_call(
-                 {dask,
-                  Nodes_visited++Target_list,
-                  Id}, Target_list),
-    {reply,lists:flatten([{node(),Localdata}| Response]),State};
+handle_call({dask,Nodes_visited,Id,Callhash}, _From, {Table,Lastreq}) ->
+    case Callhash == Lastreq of
+        true  -> {reply,[],{Table,Lastreq}};
+        false  -> 
+            Localdata = get_data(Id,Table),
+            %io:format("Datos obtenidos~n"),
+            Neighbors = sets:from_list(daemon:peers_alive()),
+            %io:format("Obtenida lista de vecinos vivos ~w~n",[sets:to_list(Neighbors)]),
+            Visited = sets:from_list(Nodes_visited),
+            %io:format("Vecinos visitados ~w~n",[Nodes_visited]),
+            Target = sets:subtract(Neighbors,Visited),
+            Target_list = sets:to_list(Target),
+            %io:format("Vecinos a los que realizar petición: ~w~n",[Target_list]),
+            Response = distributed_call(
+                         {dask,
+                          Nodes_visited++Target_list,
+                          Id,Callhash}, Target_list),
+            {reply,lists:flatten([{node(),Localdata}| Response]),{Table,Callhash}}
+    end;
 
-handle_call({ask,Id,Field,Subfield}, _From, State) ->
-    case  ets:lookup(State,Id) of
+handle_call({ask,Id,Field,Subfield}, _From, {Table,Lastreq}) ->
+    case  ets:lookup(Table,Id) of
         []  -> Response = [];
         [{Id, Contact_reference}|_]  -> 
             %ets:lookup(State,Id),
@@ -137,7 +169,7 @@ handle_call({ask,Id,Field,Subfield}, _From, State) ->
                 %L -> Response = L
             end
     end,
-    {reply,Response,State};
+    {reply,Response,{Table,Lastreq}};
 
 handle_call(Request, _From, State) -> 
     io:format("Unexpected request: ~w~n", [Request]),
@@ -223,17 +255,23 @@ ask_node(Id, Field) ->
     call({ask,Id,Field}).
 
 ask_network(Id,Field) -> 
-    distributed_call({dask,Id,Field},[]).
+    call({dask,[node()],Id,Field,hash(Id)}).
+
+hash(Req)  -> 
+    Ask = atom_to_list(Req),
+    Now = integer_to_list(erlang:system_time()),
+    Node = atom_to_list(node()),
+    crypto:hash(md4,Ask++Now++Node).
 
 ask(Id) -> 
-    %Ask= {node(),call({ask,Id})},
-    call({dask,[node()],Id}).
-    %[Ask|Result].
+    call({dask,[node()],Id,hash(Id)}).
 
 graph() -> 
     Time = timer(),
-    Res = call({digraph,[node()]}),
-    {get_timer(Time),Res}.
+    Res = lists:flatten(call({digraph,[node()],hash(graph)})),
+    io:format("~nLatencia total de la red: ~w ms~n",[get_timer(Time)]),
+    io:format("~nGrafo:~n~ngraph g{~n~s}~n",[Res]),
+    io:format("Ver representación del grafo en http://www.webgraphviz.com/~n").
 
 ask_node(Id,Field,Subfield) -> 
     call({ask,Id,Field,Subfield}).
