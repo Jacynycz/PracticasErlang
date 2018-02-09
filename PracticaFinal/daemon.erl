@@ -16,7 +16,7 @@ handle_call(stop_daemon, _From, State) ->
 
 handle_call(daemon_alive, {_,Ref}, State) ->
     Requester = node(Ref),
-    io:format("Recibida petición de ~w~n",[Requester]),
+    %io:format("Recibida petición de ~w~n",[Requester]),
     case Requester == node() of
         true  -> 
             ok;
@@ -33,28 +33,32 @@ handle_call({connect, Server}, _From, State) ->
                                                 %check if server is an atom
     case is_atom(Server) of
         true -> 
+            case node() == Server of
+                false ->
                                                 % check if it is possible to connect to the node
-            case net_adm:ping(Server) of
-                pong  -> 
+                    case net_adm:ping(Server) of
+                        pong  -> 
                                                 % check if the Node is in the list
-                    case lists:keyfind(Server,1,State) of
-                        false  -> 
+                            case lists:keyfind(Server,1,State) of
+                                false  -> 
                                                 % check if there's a daemon running
-                            case  is_alive(Server) of
-                                alive  -> 
-                                    {reply,ok,[{Server, alive} | State]};
-                                dead  -> 
-                                    {reply,{error,"El nodo no tiene la base de datos iniciada"},State}
-                            end; 
-                        _  ->
-                            {reply,{error,"Ya conectado"},State}
-                    end ;
-                pang  -> 
-                    {reply,{error, "No se puede conectar"}, State}
-           end;
-       _ ->
-           {reply,{error,"Error en el formato de la dirección "},State}
-   end;
+                                    case  is_alive(Server) of
+                                        alive  -> 
+                                            {reply,ok,[{Server, alive} | State]};
+                                        dead  -> 
+                                            {reply,{error,"El nodo no tiene la base de datos iniciada"},State}
+                                    end; 
+                                _  ->
+                                    {reply,{error,"Ya conectado"},State}
+                            end ;
+                        pang  -> 
+                            {reply,{error, "No se puede conectar"}, State}
+                    end;
+                true -> {reply,{error,"Conexión recursiva"},State}
+            end;
+        _ ->
+            {reply,{error,"Error en el formato de la dirección "},State}
+    end;
 
 handle_call(peers_info, _From,State) ->
     Newstate = check_peers(State),
@@ -63,6 +67,7 @@ handle_call(peers_info, _From,State) ->
 handle_call(peers_alive, _From,State) ->
     Newstate = check_peers(State),
     Peers = lists:filtermap(
+
               fun({Dir,Is_alive}) -> 
                       case Is_alive of
                           dead  -> false;

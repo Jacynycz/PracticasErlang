@@ -15,7 +15,7 @@ main() ->
     {ok, [X]} = io:fread("Elección : ", "~a"),
     case X of
         '1' ->
-            add_contact_prompt(),
+            view_contacts(),
             continue_msg();
         '2' ->
             add_info_prompt(),
@@ -25,8 +25,14 @@ main() ->
             continue_msg();
         '0' ->
             ok;
-        '9' ->
+        '7' ->
+            connect_node(),
+            continue_msg();
+        '8' ->
             peers_info(),
+            continue_msg();
+        '9' ->
+            create_graph(),
             continue_msg();
         _ -> main()
     end.
@@ -44,11 +50,14 @@ welcome_msg() ->
     io:format("Bienvenido a la base de datos~n"),
     separator_msg(),
     io:format("Escriba un número para realizar una acción:~n"),
-    io:format("1. Añadir contacto~n"),
+    io:format("1. Ver contactos~n"),
     io:format("2. Añadir información a contacto~n"),
     io:format("3. Ver Contacto~n"),
-    io:format("4. Editar Contacto~n"),
-    io:format("9. Ver nodos conectados~n"),
+    io:format("4. Borrar información de contacto~n"),
+    io:format("5. Borrar contacto~n"),
+    io:format("7. Conectarse a un nodo~n"),
+    io:format("8. Ver nodos conectados~n"),
+    io:format("9. Ver grafo de conexiones~n"),
     io:format("0. Salir~n"),
     separator_msg().
 
@@ -110,10 +119,10 @@ peers_info() ->
     Info = daemon:peers_info(),
     title_msg("PEERS DE LA RED"),
     lists:foreach(
-      fun ({Status,Server}) -> 
+      fun ({Server,Status}) -> 
               case Status of 
-                  1 -> io:format("El servidor ~w está ONLINE~n",[Server]);
-                  0  -> io:format("El servidor ~w está OFFLINE~n",[Server])
+                  alive -> io:format("El servidor ~w está ONLINE~n",[Server]);
+                  dead  -> io:format("El servidor ~w está OFFLINE~n",[Server])
               end
       end
                  , Info
@@ -133,13 +142,13 @@ add_info_prompt()  ->
     case table:exists_contact(Id) of
         true  -> 
             add_info_field(Id);
-        [{Node,true}|_] -> 
-            io:format("El contacto ya extiste en el nodo ~w, creando contacto~n",[Node]),
+        [{_Node,true}|_] -> 
+            %io:format("El contacto ya extiste en el nodo ~w, creando contacto~n",[Node]),
             table:add_contact(Id),
             add_info_field(Id);
         []  -> 
-            io:format("No existe el contacto~n¿Crear contacto ~w?(s/n)~n",[Id]),
-            {ok,[Choice]} =  io:fread("Elección: ", "~a"),
+            io:format("No existe el contacto~n¿Crear contacto ~w?(s/n)",[Id]),
+            {ok,[Choice]} =  io:fread(": ", "~a"),
             case Choice of
                 s  -> 
                     table:add_contact(Id),
@@ -149,49 +158,82 @@ add_info_prompt()  ->
     end.
 
 add_info_field(Id) -> 
+    {ok,[Fieldname]} =  io:fread("Nombre del campo: ", "~a"),
+    case(check_field(Id,Fieldname)) of
+        ok -> add_info_new_field(Id,Fieldname);
+        {ok,single}-> add_single_field(Id,Fieldname);
+        {ok,multi}->  add_multi_field(Id,Fieldname);
+        {Nodename,single} -> add_single_field(Id,Fieldname,Nodename);
+        {Nodename,multi}-> add_multi_field(Id,Fieldname,Nodename);
+        cancel -> ok
+    end.
+
+add_info_new_field(Id,Fieldname)->
     header_msg("Añadir un campo individual o múltiple"),
     io:format("1. Individual (Ej. Nombre, Apellidos, DNI)~n"),
     io:format("2. Múltiple (Ej. Teléfonos, Correos, Direcciones)~n"),
     {ok,[Choice]} =  io:fread("Elección: ", "~a"),
     case Choice of 
         '1'  -> 
-            add_single_field(Id);
-       '2' ->
-            add_multi_field(Id);
+            add_single_field(Id,Fieldname);
+        '2' ->
+            add_multi_field(Id,Fieldname);
         _ -> 
             ok
     end.
 
-add_single_field(Id)  -> 
-    header_msg("Añadir un campo individual al contacto "++atom_to_list(Id)),
-    {ok,[Fieldname]} =  io:fread("Nombre del campo: ", "~a"),
-    case(check_field(Id,Fieldname)) of
-        true  -> 
-            Value =  getline("Valor del campo: "),
-            table:overwrite_single_field(Id,Fieldname,Value);
-        _   -> ok
-    end.
+add_single_field(Id,Fieldname)  -> 
+    io:format("Añadir un campo individual '~w' al contacto '~w'~n",[Fieldname,Id]),
+    Value =  getline("Valor del campo: "),
+    table:overwrite_single_field(Id,Fieldname,Value).
 
-add_multi_field(Id)  -> 
-    header_msg("Añadir un campo múltiple al contacto "++atom_to_list(Id)),
-    {ok,[Fieldname]} =  io:fread("Nombre del campo: ", "~a"),
-    Values = ask_for_values(Id,Fieldname),
+add_single_field(Id,Fieldname, Nodename)  -> 
+    io:format("Añadir un campo individual '~w' al contacto '~w' en el nodo ~w~n",[Fieldname,Id,Nodename]),
+    Value =  getline("Valor del campo: "),
+    table:overwrite_single_field(Id,Fieldname,Value,Nodename).
+
+add_multi_field(Id,Fieldname)  -> 
+    io:format("Añadir un campo múltiple '~w' al contacto '~w'~n",[Fieldname,Id]),
+    Values = lists:flatten(ask_for_values(Id,Fieldname)),
     case Values of
         []  -> ok;
-        L ->
+        _L ->
             table:add_multi_field(Id,Fieldname,Values)
+    end.
+
+add_multi_field(Id,Fieldname,Nodename)  -> 
+    io:format("Añadir un campo múltiple '~w' al contacto '~w'~n",[Fieldname,Id]),
+    Values = ask_for_values(Id,Fieldname,Nodename),%,Nodename),
+    case Values of
+        [] -> ok;
+        _L ->
+            table:add_multi_field(Id,Fieldname,Values,Nodename)
     end.
 
 check_field(Id,Field)  -> 
     case table:ask_node(Id,Field) of
          [{Field, Value}] -> 
-            io:format("El campo '~w' tiene el valor '~s' en el nodo actual~n",[Field,Value]),
-            {ok,[Choice]} =  io:fread("¿Desea sobreescribirlo?(s/n): ", "~a"),
-            case Choice of 
-                s  -> 
-                    true;
-                _ ->
-                    false
+            case Value of
+                [{_,_}|_] ->
+                    io:format("El campo '~w' es un campo múltiple en el nodo actual con valores~n",[Field]),
+                    format_info(Value,""),
+                    {ok,[Choice]} =  io:fread("¿Desea añadir valores en ese nodo?(s/n): ", "~a"),
+                    case Choice of 
+                        s  -> 
+                            {ok,multi};
+                        _ ->
+                            cancel
+                    end;
+
+                Single_local_value ->
+                    io:format("El campo '~w' tiene el valor '~s' en el nodo actual~n",[Field,Single_local_value]),
+                    {ok,[Choice]} =  io:fread("¿Desea sobreescribirlo?(s/n): ", "~a"),
+                    case Choice of 
+                        s  -> 
+                            {ok,single};
+                        _ ->
+                            cancel
+                    end
             end;
         [] -> 
             Peers_info = table:ask_network(Id, Field),
@@ -204,68 +246,75 @@ check_field(Id,Field)  ->
                    end,
                    Peers_info) 
             of
-                []  -> true;
+                []  -> ok;
                 L  ->
-                    io:format("Se han encotrado valores prara el campo '~w' en otros nodos:~n",[Field]),
-                    lists:foreach(
-                     fun ({Node, [{_F,Nodevalue}]})  -> 
-                             io:format("-- '~s' en el nodo ~w~n",[Nodevalue,Node])
-                     end,
-                      L),
-                    separator_msg(),
-                    io:format("Añadir este campo puede provocar inconsistencia de datos entre los nodos~n"),
-                    {ok,[Choice]} =  io:fread("¿Desea continuar?(s/n): ", "~a"),
-                    case Choice of 
-                        s  -> 
-                            true;
-                        _ ->
-                            false
+                    io:format("Recibido ~w~n",[L]),
+                    [{Nodename,[{Field,Dvalue}]}] = L,
+                    case Dvalue of 
+                        [{_Subfield,_Subvalue}|_]->
+                            io:format("El campo '~w' es un campo múltiple en el nodo ~w con valores~n",[Field,Nodename]),
+                            format_info(Dvalue,""),
+                            {ok,[Choice]} =  io:fread("¿Desea añadir valores en ese nodo?(s/n): ", "~a"),
+                            case Choice of 
+                                s  -> 
+                                    {Nodename,multi};
+                                _ ->
+                                    cancel
+                            end;
+                        
+                        Singlevalue ->
+                            io:format("El campo '~w' es un campo individual con valor '~s' en el nodo ~w~n",[Field,Singlevalue,Nodename]),
+                            {ok,[Choice]} =  io:fread("¿Desea sobreescribir el dato en ese nodo?(s/n): ", "~a"),
+                            case Choice of 
+                                s  -> 
+                                    {Nodename,single};
+                                _ ->
+                                    cancel
+                            end
                     end
             end
-   end.
+    end.
+
+format_subfield(Values)->
+    lists:foreach(
+      fun({_Sf,Sv})->
+              io:format("-- ~s~n",[Sv]) 
+      end,
+      Values).
 
 check_subfield(Id, Field, Subfield) ->
-        case table:ask_node(Id,Field,Subfield) of
-         [{Subfield, Value}] -> 
-            io:format("El campo '~w' tiene el valor '~s' en el nodo actual~n",[Subfield,Value]),
+    Ask =table:ask_node(Id,Field,Subfield),
+    case Ask of
+        [{Subfield, _V}|_] -> 
+            io:format("El campo '~w' tiene valores:~n",[Subfield]),
+            format_subfield(Ask),    
             io:format("El sistema no permite subcampos con la misma clave y valor~n"),
             {ok,[Choice]} =  io:fread("¿Desea continuar?(s/n): ", "~a"),
             case Choice of 
                 s  -> 
-                    true;
+                    ok;
                 _ ->
-                    false
+                    cancel
             end;
-        [] -> 
-            Peers_info = table:ask_network(Id, Field, Subfield),
-            case lists:filter(
-                   fun({_, Responses}) ->
-                           case Responses of 
-                               []  -> false;
-                               _  -> true
-                           end
-                   end,
-                   Peers_info) 
-            of
-                []  -> true;
-                L  ->
-                    io:format("Se han encotrado valores prara el subcampo '~w' en otros nodos:~n",[Subfield]),
-                    lists:foreach(
-                     fun ({Node, [{_F,Nodevalue}]})  -> 
-                             io:format("-- '~s' en el nodo ~w~n",[Nodevalue,Node])
-                     end,
-                      L),
-                    separator_msg(),
-                    io:format("Añadir este campo puede provocar inconsistencia de datos entre los nodos~n"),
-                    {ok,[Choice]} =  io:fread("¿Desea continuar?(s/n): ", "~a"),
-                    case Choice of 
-                        s  -> 
-                            true;
-                        _ ->
-                            false
-                    end
-            end
-   end.
+        [] -> ok
+    end.
+
+check_subfield(Id, Field, Subfield,Nodename) ->
+    Ask =table:ask_node(Id,Field,Subfield,Nodename),
+    case Ask of
+        [{Subfield, _V}|_] -> 
+            io:format("El campo '~w' tiene valores:~n",[Subfield]),
+            format_subfield(Ask),    
+            io:format("El sistema no permite subcampos con la misma clave y valor~n"),
+            {ok,[Choice]} =  io:fread("¿Desea continuar?(s/n): ", "~a"),
+            case Choice of 
+                s  -> 
+                    ok;
+                _ ->
+                    cancel
+            end;
+        [] -> ok
+    end.
 
 getline(Text)  -> 
     Line = io:get_line(Text),
@@ -273,27 +322,60 @@ getline(Text)  ->
 
 ask_for_values(Id,Fieldname) ->
     {ok,[Subfieldname]} =  io:fread("Nombre del subcampo: ", "~a"),
-    check_subfield(Id,Fieldname, Subfieldname),
-    Subfieldvalue = getline("Valor del subcampo"),
-    {ok,[Choice]} =  io:fread("¿Añadir otro valor más? (s/n): ", "~a"),
-    case Choice of 
-        's'  -> [{Subfieldname,Subfieldvalue}|ask_for_values(Id,Fieldname)];
-        _ ->  [{Subfieldname,Subfieldvalue}]
+    case check_subfield(Id,Fieldname, Subfieldname) of
+        ok ->
+            Subfieldvalue = getline("Valor del subcampo: "),
+            {ok,[Choice]} =  io:fread("¿Añadir otro valor más? (s/n): ", "~a"),
+            case Choice of 
+                's'  -> [{Subfieldname,Subfieldvalue}|ask_for_values(Id,Fieldname)];
+                _ ->  [{Subfieldname,Subfieldvalue}]
+            end;
+        cancel ->
+            {ok,[Choice]} =  io:fread("¿Añadir otro valor más? (s/n): ", "~a"),
+            case Choice of 
+                's'  -> ask_for_values(Id,Fieldname);
+                _ ->  []
+            end
     end.
+
+ask_for_values(Id,Fieldname,Nodename) ->
+    {ok,[Subfieldname]} =  io:fread("Nombre del subcampo: ", "~a"),
+    case check_subfield(Id,Fieldname, Subfieldname,Nodename) of
+        ok ->
+            Subfieldvalue = getline("Valor del subcampo: "),
+            {ok,[Choice]} =  io:fread("¿Añadir otro valor más? (s/n): ", "~a"),
+            case Choice of 
+                's'  -> [{Subfieldname,Subfieldvalue}|ask_for_values(Id,Fieldname,Nodename)];
+                _ ->  [{Subfieldname,Subfieldvalue}]
+            end;
+        cancel ->
+            {ok,[Choice]} =  io:fread("¿Añadir otro valor más? (s/n): ", "~a"),
+            case Choice of 
+                's'  -> ask_for_values(Id,Fieldname,Nodename);
+                _ ->  []
+            end
+    end.
+
 
 check_contact_prompt() ->
     title_msg("VER INFORMACIÓN DE CONTACTO"),
-    io:format("1. Ver toda la información del contacto~n"),
-    io:format("2. Ver un valor concreto del contacto~n"),
-    {ok, [X]} = io:fread("Elección: ", "~a"),
-    case X of
-        '1' ->
-            {ok, [Id]} = io:fread("Identificador de contacto: ", "~a"),
-            format(table:ask(Id));
-        '2'  -> 
-            {ok, [Id]} = io:fread("Identificador de contacto: ", "~a"),
-            {ok, [Field]} = io:fread("Valor buscado: ", "~a"),
-            format(table:ask(Id,Field));
-        _ -> ok
-        end.
+        {ok, [Id]} = io:fread("Identificador de contacto: ", "~a"),
+    format(table:ask(Id)).
+        
 
+create_graph()->
+    title_msg("GRAFO DE CONEXIÓN DE LA RED"),
+    table:graph().
+
+connect_node()->
+    {ok, [Node]} = io:fread("Dirección del nodo (sin comillas): ", "~a"),
+    case daemon:connect(Node) of
+        {error, Msg}->
+            io:format("Error al conectar al nodo ~w~nCausa: ~s~n",[Node,Msg]);
+        ok ->
+            io:format("Conectado al nodo ~w~n",[Node])
+    end.
+
+view_contacts()->
+    title_msg("LISTA DE CONTACTOS EN TODOS LOS NODOS"),
+    lists:foreach(fun(X)->io:format(" - ~s~n",[X]) end,table:contacts()).

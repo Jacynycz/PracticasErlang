@@ -10,16 +10,19 @@
          start/0,
          stop/0,
          exists_contact/1,
+         contacts/0,
          add_single_field/3,
          overwrite_single_field/3,
+         overwrite_single_field/4,
          add_multi_field/3,
+         add_multi_field/4,
          graph/0,
          ask/1,
          ask/2,
          ask_node/2,
          ask_network/2,
          ask_node/3,
-         ask_network/3,
+         ask_node/4,
          add_contact/1]).
 
 -behaviour(gen_server).
@@ -85,8 +88,9 @@ handle_call({add_multi_field,Id,Field,Values}, _From, {Table,Lastreq}) ->
                     ets:insert(Reference,{Field,multi,Field_reference}),
                     ets:insert(Field_reference,Values),
                     {reply,{ok ,{Id,Field,Values}},{Table,Lastreq}};
-                [{_,Existing_value}] ->
-                    {reply,{existing,{Existing_value}},{Table,Lastreq}}
+                [{_,multi,Subfield_table}] ->
+                    ets:insert(Subfield_table,Values),
+                    {reply,{ok,{Id,Field,Values}},{Table,Lastreq}}
             end
     end;
 
@@ -95,26 +99,26 @@ handle_call({ask,Id,Field}, _From, {Table,Lastreq}) ->
     {reply,Response,{Table,Lastreq}};
 
 handle_call({dask,Nodes_visited,Id,Field,Callhash}, _From, {Table,Lastreq}) ->
-    %Response = get_data(Id,State,Field),
-    %{reply,Response,State};
-case Callhash == Lastreq of
-    true  -> {reply,[],{Table,Lastreq}};
-    false  -> 
-        Localdata = get_data(Id,Table,Field),
+                                                %Response = get_data(Id,State,Field),
+                                                %{reply,Response,State};
+    case Callhash == Lastreq of
+        true  -> {reply,[],{Table,Lastreq}};
+        false  -> 
+            Localdata = get_data(Id,Table,Field),
                                                 %io:format("Datos obtenidos~n"),
-        Neighbors = sets:from_list(daemon:peers_alive()),
+            Neighbors = sets:from_list(daemon:peers_alive()),
                                                 %io:format("Obtenida lista de vecinos vivos ~w~n",[sets:to_list(Neighbors)]),
-        Visited = sets:from_list(Nodes_visited),
+            Visited = sets:from_list(Nodes_visited),
                                                 %io:format("Vecinos visitados ~w~n",[Nodes_visited]),
-        Target = sets:subtract(Neighbors,Visited),
-        Target_list = sets:to_list(Target),
+            Target = sets:subtract(Neighbors,Visited),
+            Target_list = sets:to_list(Target),
                                                 %io:format("Vecinos a los que realizar petición: ~w~n",[Target_list]),
-        Response = distributed_call(
-                     {dask,
-                      Nodes_visited++Target_list,
-                      Id,Field,Callhash}, Target_list),
-        {reply,lists:flatten([{node(),Localdata}| Response]),{Table,Callhash}}
-end;
+            Response = distributed_call(
+                         {dask,
+                          Nodes_visited++Target_list,
+                          Id,Field,Callhash}, Target_list),
+            {reply,lists:flatten([{node(),Localdata}| Response]),{Table,Callhash}}
+    end;
 
 handle_call({digraph,Nodes_visited,Callhash}, _From, {Table,Lastreq}) ->
     case Callhash == Lastreq of
@@ -126,16 +130,33 @@ handle_call({digraph,Nodes_visited,Callhash}, _From, {Table,Lastreq}) ->
             Target_list = sets:to_list(Target),
             Node_rep = 
                 lists:map(
-                 fun(Nextnodes) -> 
-                         "\"" ++ atom_to_list(node()) ++ "\" -- \"" ++
-atom_to_list(Nextnodes) ++ "\"\n"
-end,Target_list),
+                  fun(Nextnodes) -> 
+                          "\"" ++ atom_to_list(node()) ++ "\" -- \"" ++
+                              atom_to_list(Nextnodes) ++ "\"\n"
+                  end,Target_list),
             Response = distributed_call(
                          {digraph,
                           Nodes_visited++Target_list,
-                         Callhash}, 
+                          Callhash}, 
                          Target_list),
             {reply,[Node_rep | Response],{Table,Callhash}}
+    end;
+
+handle_call({dcontacts,Nodes_visited,Callhash}, _From, {Table,Lastreq}) ->
+    case Callhash == Lastreq of
+        true  -> {reply,[],{Table,Lastreq}};
+        false  -> 
+            Neighbors = sets:from_list(daemon:peers_alive()),
+            Visited = sets:from_list(Nodes_visited),
+            Target = sets:subtract(Neighbors,Visited),
+            Target_list = sets:to_list(Target),
+            Data =  ets:match_object(Table, {'$1', '_'}),
+            Response = distributed_call(
+                         {dcontacts,
+                          Nodes_visited++Target_list,
+                          Callhash}, 
+                         Target_list),
+            {reply,[Data | Response],{Table,Callhash}}
     end;
 
 handle_call({dask,Nodes_visited,Id,Callhash}, _From, {Table,Lastreq}) ->
@@ -143,14 +164,14 @@ handle_call({dask,Nodes_visited,Id,Callhash}, _From, {Table,Lastreq}) ->
         true  -> {reply,[],{Table,Lastreq}};
         false  -> 
             Localdata = get_data(Id,Table),
-            %io:format("Datos obtenidos~n"),
+                                                %io:format("Datos obtenidos~n"),
             Neighbors = sets:from_list(daemon:peers_alive()),
-            %io:format("Obtenida lista de vecinos vivos ~w~n",[sets:to_list(Neighbors)]),
+                                                %io:format("Obtenida lista de vecinos vivos ~w~n",[sets:to_list(Neighbors)]),
             Visited = sets:from_list(Nodes_visited),
-            %io:format("Vecinos visitados ~w~n",[Nodes_visited]),
+                                                %io:format("Vecinos visitados ~w~n",[Nodes_visited]),
             Target = sets:subtract(Neighbors,Visited),
             Target_list = sets:to_list(Target),
-            %io:format("Vecinos a los que realizar petición: ~w~n",[Target_list]),
+                                                %io:format("Vecinos a los que realizar petición: ~w~n",[Target_list]),
             Response = distributed_call(
                          {dask,
                           Nodes_visited++Target_list,
@@ -159,14 +180,13 @@ handle_call({dask,Nodes_visited,Id,Callhash}, _From, {Table,Lastreq}) ->
     end;
 
 handle_call({ask,Id,Field,Subfield}, _From, {Table,Lastreq}) ->
+  
     case  ets:lookup(Table,Id) of
         []  -> Response = [];
         [{Id, Contact_reference}|_]  -> 
-            %ets:lookup(State,Id),
             case ets:lookup(Contact_reference,Field) of
                 []  -> Response = [];
                 [{Field,multi,Field_reference}] -> Response = ets:lookup(Field_reference,Subfield)
-                %L -> Response = L
             end
     end,
     {reply,Response,{Table,Lastreq}};
@@ -193,11 +213,14 @@ code_change(_PreviousVersion, State, _Extra) ->
 call(Request)  -> 
     gen_server:call(?SERVERNAME, Request).
 
+call(Request,Nodename)  -> 
+    gen_server:call({?SERVERNAME,Nodename}, Request).
+
 distributed_call(Request,Nodes)  -> 
     case Nodes of 
         []  ->  [];
         L  -> 
-            io:format("Realizando llamada ~w a los nodos ~w~n",[Request,Nodes]),
+            %io:format("Realizando llamada ~w a los nodos ~w~n",[Request,Nodes]),
             lists:map(
               fun (Server) ->
                       gen_server:call({?SERVERNAME,Server},Request)
@@ -207,7 +230,7 @@ distributed_call(Request,Nodes)  ->
     end.
 
 extract_multifields(List)  -> 
-    %io:format("Extracting multifields of ~w~n",[L]),
+                                                %io:format("Extracting multifields of ~w~n",[L]),
     lists:map(
       fun({Field,multi,Reference_fields})  -> 
               {Field,
@@ -227,11 +250,11 @@ exists_contact(Id)  ->
     case call({exists_contact,Id}) of
         true  -> true;
         false  -> 
-            %Other_nodes = 
-                lists:filter(
-                  fun({_, Bool}) -> Bool end,
-                  distributed_call({exists_contact,Id},[])                
-                  )
+                                                %Other_nodes = 
+            lists:filter(
+              fun({_, Bool}) -> Bool end,
+              distributed_call({exists_contact,Id},[])                
+             )
     end.
 
 add_contact(Id)  -> 
@@ -243,8 +266,14 @@ add_single_field(Id, Field, Value)  ->
 overwrite_single_field(Id, Field, Value)  -> 
     call({overwrite_single_field,Id,Field,Value}).
 
+overwrite_single_field(Id, Field, Value, Nodename)  -> 
+    call({overwrite_single_field,Id,Field,Value},Nodename).
+
 add_multi_field(Id, Field, Value)  -> 
     call({add_multi_field,Id,Field,Value}).
+
+add_multi_field(Id, Field, Value,Nodename)  -> 
+    call({add_multi_field,Id,Field,Value},Nodename).
 
 ask(Id, Field) -> 
     Ask= {node(),call({ask,Id,Field})},
@@ -276,8 +305,14 @@ graph() ->
 ask_node(Id,Field,Subfield) -> 
     call({ask,Id,Field,Subfield}).
 
-ask_network(Id,Field,Subfield) -> 
-    distributed_call({ask,Id,Field,Subfield},[]).
+ask_node(Id,Field,Subfield,Nodename) -> 
+    call({ask,Id,Field,Subfield},Nodename).
+
+contacts() -> 
+    List = lists:flatten(call({dcontacts,[node()],hash(contacts)})),
+    Filtered = lists:map(fun({Id,_Ref})->Id end,List),
+    Set = sets:from_list(Filtered),
+    sets:to_list(Set).
 
 get_data(Id,Table) -> 
     case  ets:lookup(Table,Id) of
