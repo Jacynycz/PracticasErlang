@@ -1,0 +1,27 @@
+_contact
+vik
+_single
+nombre,Viktor
+_single
+apellidos,Jacynycz
+_multi
+direcciones
+casa,Calle Falsa 123
+trabajo,Calle Verdadera 456
+_endmulti
+_contact
+teresa
+_single
+nombre,Teresa
+_single
+apellidos,García Núñez
+_multi
+telefono
+casa,9128899183
+movil,673473467
+_endmulti
+_multi
+email
+personal,tegarnu@mail.com
+trabajo,tgarcia@work.eu
+_endmulti

@@ -1,0 +1,16 @@
+_contact
+jaime
+_single
+nombre,Jaime
+_multi
+telefono
+trabajo,10293918299938
+casa,9182918929
+_endmulti
+_contact
+teresa
+_multi
+direcciones
+casa,"Calle Ramanujan 3, 14 P"
+trabajo,"Calle Euler 2, 71 E"
+_endmulti

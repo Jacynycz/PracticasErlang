@@ -23,6 +23,12 @@ main() ->
         '3' ->
             check_contact_prompt(),
             continue_msg();
+        '4' ->
+            delete_info(),
+            continue_msg();
+        '5' ->
+            delete_contact(),
+            continue_msg();
         '0' ->
             ok;
         '7' ->
@@ -129,26 +135,16 @@ peers_info() ->
      ),
     io:format("-----------------~n").
 
-add_contact_prompt() ->
-    title_msg("AÑADIR CONTACTO"),
-    io:format("Introduzca los datos del contacto~n"),
-    {ok, [Id]} = io:fread("Identificador de contacto: ", "~a"),
-    table:add_contact(Id).
-
 add_info_prompt()  -> 
     title_msg("AÑADIR INFORMACIÓN DE CONTACTO"),
     io:format("Introduzca los datos del contacto~n"),
     {ok, [Id]} = io:fread("Identificador de contacto: ", "~a"),
-    case table:exists_contact(Id) of
+    case table:exists_contact_node(Id) of
         true  -> 
             add_info_field(Id);
-        [{_Node,true}|_] -> 
-            %io:format("El contacto ya extiste en el nodo ~w, creando contacto~n",[Node]),
-            table:add_contact(Id),
-            add_info_field(Id);
-        []  -> 
-            io:format("No existe el contacto~n¿Crear contacto ~w?(s/n)",[Id]),
-            {ok,[Choice]} =  io:fread(": ", "~a"),
+        false  -> 
+            io:format("No existe el contacto '~w' en el nodo actual~n",[Id]),
+            {ok,[Choice]} =  io:fread("¿Crear contacto?(s/n): ", "~a"),
             case Choice of
                 s  -> 
                     table:add_contact(Id),
@@ -300,7 +296,7 @@ check_subfield(Id, Field, Subfield) ->
     end.
 
 check_subfield(Id, Field, Subfield,Nodename) ->
-    Ask =table:ask_node(Id,Field,Subfield,Nodename),
+    Ask =table:ask_rnode(Id,Field,Subfield,Nodename),
     case Ask of
         [{Subfield, _V}|_] -> 
             io:format("El campo '~w' tiene valores:~n",[Subfield]),
@@ -379,3 +375,136 @@ connect_node()->
 view_contacts()->
     title_msg("LISTA DE CONTACTOS EN TODOS LOS NODOS"),
     lists:foreach(fun(X)->io:format(" - ~s~n",[X]) end,table:contacts()).
+
+delete_info()->
+    title_msg("ELIMINAR INFORMACIÓN DE CONTACTO"),
+    {ok,[Id]} =  io:fread("Identificador del contacto: ", "~a"),
+    case table:exists_contact_network(Id) of
+        true ->
+    format(table:ask(Id)),
+            {ok,[Field]} =  io:fread("Campo que se desea eliminar: ", "~a"),
+            case table:ask_node(Id,Field) of
+                [] -> delete_info_network(Id,Field);
+                Info ->
+                    delete_info_node(Id,Field,Info)
+                end;
+        _ -> io:format("Contacto '~w' no encontrado",[Id])
+    end.
+
+delete_info_network(Id,Field)->
+    Response = lists:filter(
+                 fun({_, Responses}) ->
+                         case Responses of 
+                             []  -> false;
+                             _  -> true
+                         end
+                 end,
+                 table:ask_network(Id,Field)),
+    case Response of
+        [] ->
+            ok;
+        [{Nodename,[{Field,Info}]}] ->
+            delete_info_node(Id,Field,Info,Nodename)
+    end.
+
+delete_info_node(Id,Field,Info)->
+    case Info of
+        [{Field,[{_SFN,_SFV}|_]}] ->
+            io:format("El campo es multivalorado:~n"),
+            io:format("1. Eliminar el campo entero~n"),
+            io:format("2. Eliminar uno de los subcampos~n"),
+            {ok,[Choice]} = io:fread("Elección: ", "~a"),
+            case Choice of
+                '1'-> 
+                    {ok,[Sure]} = io:fread("¿Esta seguro?(s/n): ", "~a"),
+                    case Sure of 
+                        s ->
+                            table:del({Id,Field});
+                        _->
+                            ok
+                    end;
+                '2'-> 
+                    io:format("El valor del campo '~w' es~n",[Field]),
+                    format_info(table:ask_node(Id,Field),""),
+                    {ok,[Subfield]} = io:fread("¿Qué subcampo quiere eliminar?: ", "~a"),
+                    case table:ask_node(Id,Field,Subfield) of
+                        [] -> ok;
+                        _L ->
+                            {ok,[Sure]} = io:fread("¿Esta seguro?(s/n): ", "~a"),
+                            case Sure of 
+                                s ->
+                                    table:del({Id,Field,Subfield});
+                                _->
+                                    ok
+                            end
+                        end;
+                _ -> ok
+            end;
+        [{Field,S}] ->
+            io:format("El campo '~w' tiene el valor '~s'~n",[Field,S]),
+            {ok,[Choice]} = io:fread("¿Desea eliminarlo?(s/n): ", "~a"),
+            case Choice of 
+                s -> table:del({Id,Field});
+                _ -> ok
+            end
+    end.
+
+delete_info_node(Id,Field,Info,Nodename)->
+    io:format("El campo que se desea eliminar está en el nodo ~w~n",[Nodename]),
+    case Info of
+        [{_SFN,_SFV}|_] ->
+            io:format("El campo es multivalorado:~n"),
+            io:format("1. Eliminar el campo entero~n"),
+            io:format("2. Eliminar uno de los subcampos~n"),
+            {ok,[Choice]} = io:fread("Elección: ", "~a"),
+            case Choice of
+                '1'-> 
+                    {ok,[Sure]} = io:fread("¿Esta seguro?(s/n): ", "~a"),
+                    case Sure of 
+                        s ->
+                            table:del({Id,Field},Nodename);
+                        _->
+                            ok
+                    end;
+                '2'-> 
+                    io:format("El valor del campo '~w' es~n",[Field]),
+                    format_info(table:ask_rnode(Id,Field,Nodename),""),
+                    {ok,[Subfield]} = io:fread("¿Qué subcampo quiere eliminar?: ", "~a"),
+                    case table:ask_rnode(Id,Field,Subfield,Nodename) of
+                        [] -> ok;
+                        _L ->
+                            {ok,[Sure]} = io:fread("¿Esta seguro?(s/n): ", "~a"),
+                            case Sure of 
+                                s ->
+                                    table:del({Id,Field,Subfield},Nodename);
+                                _->
+                                    ok
+                            end
+                        end;
+                _ -> ok
+            end;
+        S ->
+            io:format("El campo '~w' tiene el valor '~s'~n",[Field,S]),
+            {ok,[Choice]} = io:fread("¿Desea eliminarlo?(s/n): ", "~a"),
+            case Choice of 
+                s -> table:del({Id,Field},Nodename);
+                _ -> ok
+            end
+    end.
+
+
+delete_contact()->
+    title_msg("ELIMINAR CONTACTO"),
+    io:format("Contactos existentes en la red~n"),
+    lists:foreach(fun(X)->io:format("~s~n",[X]) end,table:contacts()),
+    separator_msg(),
+    {ok,[Id]} =  io:fread("Identificador del contacto que se desea borrar: ", "~a"),
+    case table:exists_contact_network(Id) of
+        true ->
+            {ok,[Choice]} =  io:fread("Desea eliminar al contacto de todos los nodos?(s/n): ", "~a"),
+            case Choice of 
+                's'  -> table:del({Id});
+                _ ->  []
+            end;
+        _ -> io:format("No existe el contacto '~w'~n",[Id])
+end.

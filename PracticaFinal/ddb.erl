@@ -1,5 +1,5 @@
 -module(ddb).
--export([init/0,start/1,stop/0,connect/1]).
+-export([init/0,start/1,stop/0,connect/1,full/0]).
 
 
 connect(Ip)  ->
@@ -10,6 +10,8 @@ connect(Ip)  ->
     end.
 
 init() -> start(light).
+
+full() -> start(full).
 
 start(Opts)  ->
     check_node(),

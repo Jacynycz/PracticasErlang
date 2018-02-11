@@ -1,0 +1,17 @@
+_contact
+mary
+_single
+nombre,Mary
+_single
+apellidos,Poppins
+_single
+cumpleaños,01/01/1970
+_contact
+jenny
+_single
+cumpleaños,04/12/1992
+_multi
+email
+personal,jennifer@emailserver.com
+trabajo,jennwork@mywork.com
+_endmulti
